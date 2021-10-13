@@ -26,3 +26,10 @@ docker buildx create --use
 docker buildx build --push --platform linux/arm/v7,linux/arm64/v8,linux/amd64 --tag konrness/arch-test:buildx-multi .
 
 
+
+NEXT:
+
+https://github.com/containers/buildah/issues/1590
+https://hub.docker.com/r/maniator/dind-buildx
+https://github.com/docker-library/docker/issues/313
+https://github.com/docker/build-push-action/issues/302

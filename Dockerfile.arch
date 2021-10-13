@@ -1,0 +1,4 @@
+ARG ARCH=
+FROM ${ARCH}debian:buster
+
+CMD uname -m

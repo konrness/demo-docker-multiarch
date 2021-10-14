@@ -1,0 +1,103 @@
+pipeline:
+    name: multiarch
+    identifier: multiarch
+    projectIdentifier: Konr_Dev
+    orgIdentifier: default
+    tags: {}
+    properties:
+        ci:
+            codebase:
+                connectorRef: konrness_Github
+                repoName: demo-docker-multiarch
+                build: <+input>
+    stages:
+        - stage:
+              name: build
+              identifier: build
+              type: CI
+              spec:
+                  cloneCodebase: true
+                  infrastructure:
+                      type: KubernetesDirect
+                      spec:
+                          connectorRef: konrgke
+                          namespace: builds
+                  execution:
+                      steps:
+                          - step:
+                                type: Run
+                                name: Check Docker in Docker service
+                                identifier: Check_Docker_in_Docker_service
+                                spec:
+                                    connectorRef: konrness_Docker_Hub
+                                    image: docker:dind
+                                    command: |-
+                                        while ! docker ps ;do
+                                            echo "Docker not available yet"
+                                        done
+
+                                        echo "Docker Service Ready"
+                                    privileged: true
+                          - parallel:
+                                - step:
+                                      type: Run
+                                      name: Docker amd64
+                                      identifier: Docker_amd64
+                                      spec:
+                                          connectorRef: konrness_Docker_Hub
+                                          image: docker:dind
+                                          command: |-
+                                              docker build -t konrness/arch-test:harness-<+pipeline.sequenceId>-amd64 --build-arg ARCH=amd64/ -f Dockerfile.arch .
+
+                                              docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+                                              docker push konrness/arch-test:harness-<+pipeline.sequenceId>-amd64
+                                          privileged: true
+                                          envVariables:
+                                              DOCKER_USERNAME: konrness
+                                              DOCKER_PASSWORD: <+secrets.getValue("konrness_Docker_Hub_token")>
+                                - step:
+                                      type: Run
+                                      name: Docker arm64v8
+                                      identifier: Docker_arm_v7
+                                      spec:
+                                          connectorRef: konrness_Docker_Hub
+                                          image: docker:dind
+                                          command: |-
+                                              docker build -t konrness/arch-test:harness-<+pipeline.sequenceId>-arm64v8 --build-arg ARCH=arm64v8/ -f Dockerfile.arch .
+
+                                              docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+                                              docker push konrness/arch-test:harness-<+pipeline.sequenceId>-arm64v8
+                                          privileged: true
+                                          envVariables:
+                                              DOCKER_USERNAME: konrness
+                                              DOCKER_PASSWORD: <+secrets.getValue("konrness_Docker_Hub_token")>
+                          - step:
+                                type: Run
+                                name: Multi-Arch Build
+                                identifier: MultiArch_Build
+                                spec:
+                                    connectorRef: konrness_Docker_Hub
+                                    image: docker:dind
+                                    command: |-
+                                        docker manifest create konrness/arch-test:harness-<+pipeline.sequenceId> \
+                                            --amend konrness/arch-test:harness-<+pipeline.sequenceId>-amd64 \
+                                            --amend konrness/arch-test:harness-<+pipeline.sequenceId>-arm64v8
+
+                                        docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+                                        docker manifest push konrness/arch-test:harness-<+pipeline.sequenceId>
+                                    privileged: true
+                                    envVariables:
+                                        DOCKER_USERNAME: konrness
+                                        DOCKER_PASSWORD: <+secrets.getValue("konrness_Docker_Hub_token")>
+                  serviceDependencies:
+                      - identifier: Docker_in_Docker
+                        name: Docker in Docker
+                        type: Service
+                        spec:
+                            connectorRef: konrness_Docker_Hub
+                            image: docker:dind
+                            privileged: true
+                  sharedPaths:
+                      - /var/run
+                      - /var/lib/docker
+              variables: []

@@ -1,0 +1,82 @@
+pipeline:
+    name: multiarch-buildx
+    identifier: multiarchbuildx
+    projectIdentifier: Konr_Dev
+    orgIdentifier: default
+    tags: {}
+    properties:
+        ci:
+            codebase:
+                connectorRef: konrness_Github
+                repoName: demo-docker-multiarch
+                build: <+input>
+    stages:
+        - stage:
+              name: build
+              identifier: build
+              type: CI
+              spec:
+                  cloneCodebase: true
+                  infrastructure:
+                      type: KubernetesDirect
+                      spec:
+                          connectorRef: konrgke
+                          namespace: builds
+                  execution:
+                      steps:
+                          - step:
+                                type: Run
+                                name: Check Docker in Docker service
+                                identifier: Check_Docker_in_Docker_service
+                                spec:
+                                    connectorRef: konrness_Docker_Hub
+                                    image: docker:dind
+                                    command: |-
+                                        while ! docker ps ;do
+                                            echo "Docker not available yet"
+                                        done
+
+                                        echo "Docker Service Ready"
+                                    privileged: true
+                          - step:
+                                type: Run
+                                name: Multi-Arch Build
+                                identifier: MultiArch_Build
+                                spec:
+                                    connectorRef: konrness_Docker_Hub
+                                    image: ncrmro/docker-buildx:20.10.6-0.5.1
+                                    command: |
+                                        set -e
+
+                                        docker version
+                                        docker buildx version
+
+                                        tag=harness-buildx-<+pipeline.sequenceId>
+
+                                        name="arch-test"
+                                        image="konrness/$name"
+                                        platform="linux/amd64,linux/arm64,linux/arm"
+
+                                        docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+
+                                        docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+                                        docker buildx create --append --name "$name" --use
+                                        docker buildx build --platform "$platform" -t "$image:$tag" --push .
+                                        docker buildx imagetools inspect "$image:$tag"
+                                    privileged: true
+                                    envVariables:
+                                        DOCKER_USERNAME: konrness
+                                        DOCKER_PASSWORD: <+secrets.getValue("konrness_Docker_Hub_token")>
+                  serviceDependencies:
+                      - identifier: Docker_in_Docker
+                        name: Docker in Docker
+                        type: Service
+                        spec:
+                            connectorRef: konrness_Docker_Hub
+                            image: docker:dind
+                            privileged: true
+                  sharedPaths:
+                      - /var/run
+                      - /var/lib/docker
+              variables: []
